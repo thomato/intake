@@ -1,0 +1,667 @@
+<!doctype html>
+<!--
+  PROTOTYPE. THROWAWAY. Do not fold into the app.
+  Question: what should the fastest logging flow look and feel like, and how few taps can each common case take?
+  Three variants of the logging flow on iPhone, Apple Watch and web, switchable via ?variant= and ?device=.
+  State lives in memory. Foods and daily targets are made-up examples.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logging Flow Prototype</title>
+<style>
+:root{--bg:#e9e9ee;--card:#fff;--ink:#16161a;--mute:#6d6d76;--line:#e3e3e8;--accent:#0a7d4f;--accent-soft:#e2f3ec;--warn:#b3261e;--warn-soft:#fbe9e7;--amber:#8a5a00;--amber-soft:#fdf1d8;--dark:#111114}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;padding:16px 16px 90px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left;padding:0}
+input{font:inherit;color:inherit}
+h1{font-size:15px;margin:0}
+.banner{max-width:1280px;margin:0 auto 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.pill{background:var(--warn);color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;letter-spacing:.04em}
+.seg{display:inline-flex;background:#d9d9df;border-radius:9px;padding:2px;margin-left:auto}
+.seg button{padding:5px 12px;border-radius:7px;font-weight:500}
+.seg button.on{background:#fff;box-shadow:0 1px 2px #0003}
+main{display:flex;gap:24px;align-items:flex-start;justify-content:center;flex-wrap:wrap;max-width:1280px;margin:auto}
+
+/* devices */
+#device{position:relative;overflow:hidden;background:var(--card);flex:none;display:flex;flex-direction:column}
+#device.phone{width:360px;height:720px;border-radius:38px;border:9px solid var(--dark)}
+#device.watch{width:208px;height:252px;border-radius:44px;border:9px solid var(--dark);background:#000;color:#fff;font-size:13px}
+#device.web{width:820px;max-width:100%;height:600px;border-radius:10px;border:1px solid #bbb}
+.webchrome{height:30px;background:#eee;border-bottom:1px solid var(--line);font-size:11px;color:var(--mute);display:flex;align-items:center;padding:0 12px;flex:none}
+
+/* shared bits */
+.grow{flex:1;min-height:0;overflow:auto}
+.pad{padding:12px 14px}
+.lbl{font-size:11px;font-weight:600;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;margin:10px 14px 4px}
+.row{display:flex;gap:10px;align-items:center;width:100%;padding:9px 14px;border-bottom:1px solid var(--line)}
+.row:hover{background:#f6f6f8}
+.row .t{font-weight:500}
+.row .s{font-size:12px;color:var(--mute)}
+.row .plus{margin-left:auto;flex:none;width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:19px}
+.bars{display:flex;gap:10px;padding:10px 14px}
+.bar{flex:1;font-size:11px;color:var(--mute)}
+.bar b{display:block;color:var(--ink);font-size:13px}
+.bar i{display:block;height:4px;border-radius:2px;background:var(--line);margin-top:3px;overflow:hidden}
+.bar i u{display:block;height:100%;background:var(--accent)}
+.primary{display:block;width:100%;text-align:center;background:var(--accent);color:#fff;font-weight:600;padding:12px;border-radius:12px}
+.primary[disabled]{opacity:.35;cursor:not-allowed}
+.link{color:var(--accent);font-weight:500}
+.field{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#f4f4f6;outline:none}
+.field:focus{border-color:var(--accent);background:#fff}
+.top{display:flex;align-items:center;gap:10px;padding:12px 14px 8px;font-weight:600}
+.top .x{margin-left:auto;color:var(--mute);font-weight:400;font-size:13px}
+.fake-kbd{flex:none;height:206px;background:#d3d5da;display:flex;flex-direction:column;gap:7px;padding:9px 4px;align-items:center;justify-content:center;color:#5d5f66;font-size:11px}
+.fake-kbd span{letter-spacing:.32em;font-size:15px;color:#3a3b40;background:#fff9;padding:7px 8px;border-radius:5px}
+
+/* sheet & toast */
+.scrim{position:absolute;inset:0;background:#0005;display:flex;align-items:flex-end;z-index:5}
+#device.web .scrim{align-items:center;justify-content:center}
+.sheet{background:#fff;width:100%;border-radius:18px 18px 0 0;padding:16px}
+#device.web .sheet{width:380px;border-radius:14px}
+.sheet h2{font-size:17px;margin:0}
+.sheet .s{color:var(--mute);font-size:12px;margin:2px 0 12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{padding:7px 11px;border-radius:99px;border:1px solid var(--line);font-size:13px}
+.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.toast{position:absolute;left:10px;right:10px;bottom:10px;background:var(--dark);color:#fff;padding:10px 12px;border-radius:12px;display:flex;gap:10px;align-items:center;z-index:6;font-size:13px}
+.has-kbd .toast{bottom:266px}
+.toast button{color:#7fe0b6;font-weight:600;margin-left:auto}
+
+/* camera */
+.cam{position:relative;background:radial-gradient(circle at 40% 30%,#4a4d55,#17181c);color:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.reticle{width:64%;height:34%;min-height:80px;border:2px solid #fffb;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:12px;text-align:center;padding:6px;color:#fffc}
+.reticle.tall{height:60%}
+.camhint{position:absolute;left:10px;right:10px;top:12px;font-size:12px;text-align:center}
+.camhint b{background:#0009;padding:5px 9px;border-radius:99px;font-weight:500;display:inline-block}
+.overlay-bars{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,#000a)}
+.overlay-bars .bar,.overlay-bars .bar b{color:#fff}
+.overlay-bars .bar i{background:#fff4}
+
+/* variant A */
+.cmd{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--line);align-items:center;background:#fff}
+.iconbtn{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:#ececf0;font-size:17px}
+/* variant B */
+.chipsrow{display:flex;gap:8px;overflow-x:auto;padding:10px 12px}
+.foodchip{flex:none;width:112px;border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.foodchip .t{font-weight:600;font-size:13px}
+.foodchip .s{font-size:11px;color:var(--mute)}
+.actionrow{display:flex;gap:8px;padding:2px 12px 12px}
+.actionrow button{flex:1;text-align:center;background:#ececf0;padding:11px;border-radius:11px;font-weight:500}
+/* variant C */
+.fab{position:absolute;right:16px;bottom:16px;width:56px;height:56px;border-radius:50%;background:var(--accent);color:#fff;font-size:28px;display:grid;place-items:center;z-index:3;box-shadow:0 3px 10px #0005}
+.fabmenu{position:absolute;right:16px;bottom:82px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;z-index:3}
+.fabmenu button{background:var(--dark);color:#fff;padding:9px 14px;border-radius:99px;font-weight:500}
+.ring{display:flex;gap:14px;padding:14px;justify-content:center;background:#f7f7f9}
+.ring>div{text-align:center;font-size:11px;color:var(--mute)}
+.ring b{display:grid;place-items:center;width:78px;height:78px;border-radius:50%;font-size:15px;color:var(--ink);margin-bottom:3px}
+.ring b em{display:grid;place-items:center;width:62px;height:62px;border-radius:50%;background:#f7f7f9;font-style:normal}
+
+/* numbers */
+.bignum{font-size:46px;font-weight:700;text-align:center;border:0;width:100%;outline:none;background:none;padding:4px 0}
+.twofields{display:flex;gap:8px;margin:8px 0 12px}
+
+/* confirm */
+.crop{margin:0 14px;background:#fbf7ec;border:1px solid #e6dcc2;border-radius:8px;padding:7px 10px;font:11px/1.45 Menlo,monospace;transform:rotate(-.6deg)}
+.crop div{display:flex;justify-content:space-between}
+.crow{display:flex;align-items:center;gap:8px;padding:5px 14px;border-bottom:1px solid var(--line)}
+.crow label{flex:1;font-size:13px}
+.crow input{width:70px;padding:5px 7px;border:1px solid var(--line);border-radius:7px;text-align:right}
+.crow.flag{background:var(--warn-soft)}
+.crow.flag input{border-color:var(--warn)}
+.crow .pickdb{font-size:12px;padding:4px 7px;border-radius:7px;border:1px solid var(--line);white-space:nowrap}
+.crow .pickdb.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.note{margin:8px 14px;padding:7px 10px;border-radius:8px;font-size:12px}
+.note.bad{background:var(--warn-soft);color:var(--warn)}
+.note.ok{background:var(--accent-soft);color:var(--accent)}
+.note.amb{background:var(--amber-soft);color:var(--amber)}
+
+/* watch */
+.w-title{font-size:12px;color:#8ee6bd;padding:10px 16px 4px;font-weight:600;text-align:center}
+.w-row{display:block;width:calc(100% - 12px);margin:0 6px 5px;background:#26262a;padding:8px 11px;border-radius:12px}
+.w-row .s{display:block;font-size:11px;color:#aaa}
+.w-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:4px 6px}
+.w-tile{background:#26262a;border-radius:13px;padding:8px;height:62px;font-weight:600;font-size:12px}
+.w-tile small{display:block;font-weight:400;color:#aaa;font-size:10px}
+.w-num{font-size:38px;font-weight:700;text-align:center;line-height:1.1}
+.w-num small{display:block;font-size:11px;font-weight:400;color:#aaa}
+.w-log{display:block;width:calc(100% - 12px);margin:6px;background:#0f9a63;text-align:center;padding:8px;border-radius:14px;font-weight:600}
+#device.watch input[type=range]{width:calc(100% - 28px);margin:6px 14px;accent-color:#0f9a63}
+#device.watch .toast{left:4px;right:4px;bottom:6px;padding:7px 9px;font-size:11px}
+
+/* web */
+.w2{display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0}
+.w2>div{overflow:auto;min-height:0}
+.w2>div+div{border-left:1px solid var(--line)}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px}
+.tile{border:1px solid var(--line);border-radius:12px;padding:12px;height:92px}
+.tile:hover{border-color:var(--accent)}
+.tile .t{font-weight:600}
+.tile .s{font-size:12px;color:var(--mute)}
+.palette{width:560px;max-width:92%;margin:26px auto 0;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px #0002;overflow:hidden;flex:none}
+.palette input{width:100%;border:0;padding:14px 16px;font-size:17px;outline:none}
+.palette #results{border-top:1px solid var(--line);max-height:230px;overflow:auto}
+kbd{background:#eee;border:1px solid #ccc;border-radius:4px;padding:0 4px;font-size:11px}
+
+/* side panel */
+#panel{width:390px;max-width:100%;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--card);border-radius:12px;padding:12px}
+.card h3{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+.bet{font-size:13px}
+.scen{display:block;width:100%;padding:6px 8px;border-radius:7px;font-size:13px}
+.scen small{display:block;color:var(--mute);font-size:12px}
+.scen.on{background:var(--accent-soft)}
+.scen:hover{background:#f2f2f5}
+.meter{display:flex;gap:18px;align-items:baseline;margin-top:6px;font-size:13px}
+.meter b{font-size:26px}
+.sim{display:block;width:100%;background:var(--amber-soft);color:var(--amber);padding:8px 10px;border-radius:8px;margin-top:6px;font-weight:600;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{padding:4px 3px;border-bottom:1px solid var(--line);text-align:center;font-weight:400}
+td:first-child,th:first-child{text-align:left}
+th{color:var(--mute)}
+td.best{color:var(--accent);font-weight:700}
+pre{font:11px/1.4 Menlo,monospace;margin:0;white-space:pre-wrap;max-height:190px;overflow:auto}
+
+/* switcher, deliberately not part of the design */
+#switch{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#ff2d78;color:#fff;border-radius:99px;padding:6px 8px;display:flex;gap:6px;align-items:center;z-index:50;box-shadow:0 4px 14px #0006;font-weight:600;white-space:nowrap;max-width:calc(100vw - 32px)}
+#switch button{width:30px;height:30px;border-radius:50%;background:#fff3;text-align:center;font-size:16px;flex:none}
+#switch span{overflow:hidden;text-overflow:ellipsis;padding:0 6px}
+</style>
+</head>
+<body>
+<div class="banner">
+  <span class="pill">PROTOTYPE</span>
+  <h1>Fast logging flow</h1>
+  <div class="seg" id="devices"></div>
+</div>
+<main>
+  <div id="device"></div>
+  <aside id="panel"></aside>
+</main>
+<div id="switch"></div>
+
+<script>
+const VARIANTS = {
+  A: {name: 'Type first', bet: 'One box does everything, with the keyboard already open. Type "450", "skyr 200" or "450 30p 15f", then press return. Works the same on the web. Cost: half of the phone screen is keyboard, and you read less of your day.'},
+  B: {name: 'Camera first', bet: 'The app opens on a live camera, with recents underneath. Point at a package and it is recognised with no taps; an unknown barcode moves straight to the label. Cost: the camera is on at every launch, and neither Watch nor web can follow it.'},
+  C: {name: 'Predicted list', bet: 'The app opens on your day and a time-aware list of likely foods. One tap logs at the last portion, with undo instead of confirm. Everything else sits behind the + button. Cost: scanning and typing each cost extra taps.'},
+};
+const DEVICE_NOTES = {
+  watch: {A: 'On Watch there is no keyboard, so the calorie number comes first: turn the Crown and log. Recents sit below it.', B: 'Watch has no camera, so this becomes four large tiles.', C: 'The same list as on iPhone, with calories as the last row.'},
+  web: {A: 'On the web this is a command palette: type, then press return.', B: 'The web has no scanning here, so the camera becomes a grid of tiles.', C: 'The list and your day sit side by side.'},
+};
+const DEVICES = {phone: 'iPhone', watch: 'Apple Watch', web: 'Web'};
+const TARGETS = {kcal: 2000, p: 120, f: 70};
+
+const FOODS = {
+  havermout: {name: 'Havermout', per: {kcal: 372, p: 13, f: 7, c: 60}, last: 60},
+  skyr: {name: 'Skyr naturel', per: {kcal: 57, p: 10, f: .2, c: 4}, last: 150},
+  ontbijt: {name: 'Ontbijt bowl', meal: [['havermout', 60], ['skyr', 150], ['banaan', 120]]},
+  pinda: {name: 'Pindakaas', per: {kcal: 620, p: 25, f: 50, c: 12}, last: 15},
+  brood: {name: 'Volkoren brood', per: {kcal: 240, p: 10, f: 3, c: 41}, last: 70},
+  banaan: {name: 'Banaan', per: {kcal: 97, p: 1.1, f: .3, c: 20}, def: 120, unit: '1 medium'},
+  appel: {name: 'Appel', per: {kcal: 54, p: .3, f: 0, c: 12}, def: 150, unit: '1 medium'},
+};
+const PREDICTED = ['havermout', 'skyr', 'ontbijt', 'pinda', 'brood'];
+
+const SCENARIOS = [
+  {id: 'repeat', t: 'Repeat a usual food', d: 'Log Havermout at the same portion as last time.', dev: ['phone', 'watch', 'web'], hit: e => e.key === 'havermout'},
+  {id: 'meal', t: 'Log a saved meal', d: 'Log Ontbijt bowl.', dev: ['phone', 'watch', 'web'], hit: e => e.key === 'ontbijt'},
+  {id: 'numbers', t: 'Calories only', d: 'Log a 450 kcal snack with nothing else.', dev: ['phone', 'watch', 'web'], hit: e => e.key === 'quick' && e.kcal === 450},
+  {id: 'search', t: 'First-time food', d: 'Log one banana, which you have never logged.', dev: ['phone', 'web'], hit: e => e.key === 'banaan'},
+  {id: 'known', t: 'Known barcode', d: 'Scan Skyr naturel and log your usual portion.', dev: ['phone'], hit: e => e.key === 'skyr' && !e.read},
+  {id: 'unknown', t: 'Unknown barcode, clean label', d: 'Scan Granola noten. Nothing is found, so photograph its label.', dev: ['phone'], hit: e => e.key === 'granola' && e.read === 'clean'},
+  {id: 'misread', t: 'Unknown barcode, misread label', d: 'The same, but the fat value is read as 180 g.', dev: ['phone'], hit: e => e.key === 'granola' && e.read === 'bad'},
+  {id: 'conflict', t: 'Package differs from database', d: 'Scan Skyr naturel, see the values look wrong, and photograph the new label.', dev: ['phone'], hit: e => e.key === 'skyr' && e.read === 'conflict'},
+];
+
+// Printed per 100 g. Energy matches the EU factors, so the arithmetic check passes on a clean read.
+const LABEL_ROWS = [
+  ['kcal', 'Energy (kcal)', 'Energie', 480, ' kcal'],
+  ['f', 'Fat (g)', 'Vetten', 18, ' g'],
+  ['sat', 'of which saturates (g)', 'waarvan verzadigd', 3, ' g'],
+  ['c', 'Carbs (g)', 'Koolhydraten', 62, ' g'],
+  ['sug', 'of which sugars (g)', 'waarvan suikers', 18, ' g'],
+  ['fib', 'Fibre (g)', 'Vezels', 8, ' g'],
+  ['p', 'Protein (g)', 'Eiwitten', 14, ' g'],
+  ['salt', 'Salt (g)', 'Zout', .2, ' g'],
+];
+const CONFLICT_ROWS = [
+  ['kcal', 'Energy (kcal)', 57, 63],
+  ['f', 'Fat (g)', .2, .2],
+  ['c', 'Carbs (g)', 4, 4.2],
+  ['p', 'Protein (g)', 10, 11],
+];
+
+const params = new URLSearchParams(location.search);
+const S = {
+  variant: VARIANTS[params.get('variant')] ? params.get('variant') : 'A',
+  device: DEVICES[params.get('device')] ? params.get('device') : 'phone',
+  screen: 'home', sheet: null, fab: false, q: '', toast: null, conf: null, pendingConflict: false, labelBanner: false,
+  nums: {kcal: '', p: '', f: ''}, crown: 300,
+  log: [], scenario: null, taps: 0, keys: 0, done: false, results: {}, lastAct: '-',
+};
+function seedLog() { return [{key: 'koffie', name: 'Koffie met melk', g: null, kcal: 20, p: 1, f: 1, c: 2, time: '07:30'}]; }
+S.log = seedLog();
+
+// ---- helpers
+const n = v => Number(String(v).replace(',', '.')) || 0;
+const fmt = v => String(Math.round(v * 10) / 10).replace('.', ',');
+const round = v => Math.round(v);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+function nutrients(key, g) {
+  const f = FOODS[key];
+  if (f.meal) return f.meal.reduce((a, [k, gr]) => { const x = nutrients(k, gr); return {kcal: a.kcal + x.kcal, p: a.p + x.p, f: a.f + x.f, c: a.c + x.c}; }, {kcal: 0, p: 0, f: 0, c: 0});
+  const m = g / 100;
+  return {kcal: f.per.kcal * m, p: f.per.p * m, f: f.per.f * m, c: f.per.c * m};
+}
+function subline(key) {
+  const f = FOODS[key];
+  if (f.meal) return f.meal.map(([k, g]) => `${FOODS[k].name} ${round(nutrients(k, g).kcal)}`).join(' · ') + ' kcal';
+  if (f.last) return `${f.last} g · ${round(nutrients(key, f.last).kcal)} kcal`;
+  return `${f.per.kcal} kcal per 100 g`;
+}
+function totals() { return S.log.reduce((a, e) => ({kcal: a.kcal + e.kcal, p: a.p + e.p, f: a.f + e.f}), {kcal: 0, p: 0, f: 0}); }
+function barsHTML() {
+  const t = totals();
+  const one = (lab, k, unit) => `<div class="bar"><b>${round(t[k])}<span style="font-weight:400;color:inherit"> / ${TARGETS[k]}${unit}</span></b>${lab}<i><u style="width:${Math.min(100, t[k] / TARGETS[k] * 100)}%"></u></i></div>`;
+  return `<div class="bars">${one('Calories', 'kcal', '')}${one('Protein', 'p', ' g')}${one('Fat', 'f', ' g')}</div>`;
+}
+function ringsHTML() {
+  const t = totals();
+  const one = (lab, k, unit) => `<div><b style="background:conic-gradient(var(--accent) ${Math.min(100, t[k] / TARGETS[k] * 100)}%,var(--line) 0)"><em>${round(t[k])}</em></b>${lab}<br>of ${TARGETS[k]}${unit}</div>`;
+  return `<div class="ring">${one('Calories', 'kcal', '')}${one('Protein', 'p', ' g')}${one('Fat', 'f', ' g')}</div>`;
+}
+function logRows() {
+  return [...S.log].reverse().map(e => `<div class="row"><div><div class="t">${esc(e.name)}</div><div class="s">${e.time}${e.g ? ' · ' + e.g + ' g' : ''} · ${round(e.kcal)} kcal</div></div></div>`).join('');
+}
+function foodRow(key, g) {
+  const f = FOODS[key];
+  const direct = g || f.meal || f.last;
+  const sub = g ? `${g} g · ${round(nutrients(key, g).kcal)} kcal` : subline(key);
+  return `<button class="row" data-act="${g ? `logg:${key}:${g}` : `tap:${key}`}"><div><div class="t">${esc(f.name)}</div><div class="s">${sub}</div></div><span class="plus">${direct ? '+' : '›'}</span></button>`;
+}
+function parseQ(q) {
+  const t = q.trim();
+  let m = t.match(/^(\d+)(?:\s*kcal)?(?:\s+(\d+)\s*p)?(?:\s+(\d+)\s*f)?$/i);
+  if (m) return {quick: {kcal: +m[1], p: +(m[2] || 0), f: +(m[3] || 0)}};
+  m = t.match(/^(.+?)\s+(\d+)\s*g?$/i);
+  const name = (m ? m[1] : t).toLowerCase();
+  const keys = Object.keys(FOODS).filter(k => FOODS[k].name.toLowerCase().includes(name));
+  return {keys, g: m ? +m[2] : null};
+}
+function resultsHTML() {
+  if (!S.q.trim()) return PREDICTED.slice(0, S.device === 'web' ? 5 : 3).map(k => foodRow(k)).join('');
+  const r = parseQ(S.q);
+  if (r.quick) {
+    const parts = [r.quick.p && `${r.quick.p} g protein`, r.quick.f && `${r.quick.f} g fat`].filter(Boolean).join(', ');
+    return `<button class="row" data-act="quick:${r.quick.kcal}:${r.quick.p}:${r.quick.f}"><div><div class="t">Log ${r.quick.kcal} kcal</div><div class="s">${parts || 'Calories only. Add "30p 15f" for protein and fat'}</div></div><span class="plus">+</span></button>`;
+  }
+  if (!r.keys.length) return `<div class="pad s" style="color:var(--mute)">Nothing found for "${esc(S.q)}".</div>`;
+  return r.keys.map(k => foodRow(k, FOODS[k].meal ? null : r.g)).join('');
+}
+const fakeKbd = () => `<div class="fake-kbd"><span>QWERTYUIOP</span><span>ASDFGHJKL</span><span>ZXCVBNM</span>On-screen keyboard, shown for size. Type on your real one.</div>`;
+const commandInput = (ph, cls = 'field') => `<input class="${cls}" id="q" data-autofocus data-enter="q" placeholder="${ph}" value="${esc(S.q)}" autocomplete="off" autocapitalize="off" spellcheck="false">`;
+
+// ---- phone: shared screens
+function cameraScreen() {
+  return `<div class="top" style="background:#17181c;color:#fff">Scan<button class="x" data-act="home" style="color:#ccc">Close</button></div>
+    <div class="cam grow"><div class="camhint"><b>Point at a barcode</b></div><div class="reticle">barcode</div></div>`;
+}
+function labelCamScreen() {
+  const text = S.pendingConflict ? 'Photograph the nutrition table on this package' : S.labelBanner ? 'Not in the database. Now photograph the nutrition table' : 'Photograph the nutrition table';
+  return `<div class="top" style="background:#17181c;color:#fff">Label<button class="x" data-act="home" style="color:#ccc">Cancel</button></div>
+    <div class="cam grow"><div class="camhint"><b>${text}</b></div><div class="reticle tall">nutrition table</div></div>`;
+}
+function searchScreen() {
+  return `<div class="top">Search<button class="x" data-act="home">Cancel</button></div>
+    <div class="pad" style="padding-top:0">${commandInput('Search foods')}</div>
+    <div class="grow" id="results">${resultsHTML()}</div>${fakeKbd()}`;
+}
+function numbersScreen() {
+  const N = S.nums;
+  return `<div class="top">Quick add<button class="x" data-act="home">Cancel</button></div>
+    <div class="grow pad">
+      <input class="bignum" id="numk" data-autofocus data-enter="nums" data-num="kcal" inputmode="numeric" placeholder="0" value="${esc(N.kcal)}" autocomplete="off">
+      <div style="text-align:center;color:var(--mute);margin-bottom:12px">kcal</div>
+      <div class="twofields">
+        <input class="field" data-enter="nums" data-num="p" inputmode="numeric" placeholder="Protein (g), optional" value="${esc(N.p)}">
+        <input class="field" data-enter="nums" data-num="f" inputmode="numeric" placeholder="Fat (g), optional" value="${esc(N.f)}">
+      </div>
+      <button class="primary" data-act="lognums">Log</button>
+    </div>${fakeKbd()}`;
+}
+function confirmScreen() {
+  const C = S.conf;
+  const conflict = C.mode === 'conflict';
+  const cropRows = conflict
+    ? [['Energie', '63 kcal'], ['Vetten', '0,2 g'], ['Koolhydraten', '4,2 g'], ['Eiwitten', '11 g']]
+    : LABEL_ROWS.map(r => [r[2], fmt(r[3]) + r[4]]);
+  let rows;
+  if (conflict) {
+    rows = C.rows.map(r => `<div class="crow"><label>${r.lab}</label>
+      <button class="pickdb ${r.use === 'db' ? 'on' : ''}" data-act="pick:${r.k}:db">Database ${fmt(r.db)}</button>
+      <button class="pickdb ${r.use === 'label' ? 'on' : ''}" data-act="pick:${r.k}:label">Label ${fmt(r.label)}</button></div>`).join('');
+  } else {
+    rows = C.rows.map(r => {
+      const bad = r.k === 'f' && n(r.val) > 100;
+      return `<div class="crow ${bad ? 'flag' : ''}"><label>${r.lab}</label>${bad ? `<button class="link" data-act="fix:f:18">Use 18</button>` : ''}
+        <input data-conf="${r.k}" inputmode="decimal" value="${esc(String(r.val).replace('.', ','))}"></div>`;
+    }).join('');
+  }
+  let note = '', blocked = false;
+  if (conflict) {
+    note = `<div class="note amb">This package disagrees with the database. Label values are selected, because the package in your hand is newer. Saving changes only your copy of this food.</div>`;
+  } else {
+    const v = Object.fromEntries(C.rows.map(r => [r.k, n(r.val)]));
+    const calc = 4 * v.c + 4 * v.p + 9 * v.f + 2 * v.fib;
+    const impossible = v.f > 100;
+    const off = Math.abs(calc - v.kcal) / Math.max(v.kcal, 1) > .15;
+    blocked = impossible;
+    note = impossible
+      ? `<div class="note bad">Fat can't be 180 g per 100 g. It looks like a missed decimal comma. Fix it to save.</div>`
+      : off
+        ? `<div class="note amb">Energy doesn't add up: these values give ${round(calc)} kcal but the label says ${round(v.kcal)}. You can save anyway; the printed numbers are kept.</div>`
+        : `<div class="note ok">Energy adds up (${round(calc)} from the values, ${round(v.kcal)} printed). Sugars, saturates and salt can't be checked this way, so compare them with the photo.</div>`;
+  }
+  return `<div class="top">${conflict ? 'Check the label' : 'Check before saving'}<button class="x" data-act="home">Cancel</button></div>
+    <div class="grow">
+      <div class="crop">${cropRows.map(r => `<div><span>${r[0]}</span><span>${r[1]}</span></div>`).join('')}</div>
+      ${note}
+      ${conflict ? '' : `<div style="padding:2px 14px 8px"><input class="field" data-confname value="${esc(C.name)}" placeholder="Food name"></div>`}
+      ${rows}
+      <div class="chips" style="margin:10px 14px">${C.portions.map(g => `<button class="chip ${C.g === g ? 'on' : ''}" data-act="confg:${g}">${g} g</button>`).join('')}</div>
+    </div>
+    <div class="pad"><button class="primary" data-act="saveconf" ${blocked ? 'disabled' : ''}>Save and log ${C.g} g</button></div>`;
+}
+function sheetHTML() {
+  const sh = S.sheet;
+  if (!sh) return '';
+  if (sh.type === 'unknown') {
+    return `<div class="scrim"><div class="sheet"><h2>Not in the database</h2><div class="s">Barcode 8711 2345 6789 0 has no match. Photograph its nutrition table to add it.</div>
+      <button class="primary" data-act="startlabel">Scan the label</button>
+      <div style="text-align:center;margin-top:10px"><button class="x link" data-act="closesheet">Not now</button></div></div></div>`;
+  }
+  const f = FOODS[sh.key];
+  const ops = [...new Set([f.last, f.def, 100, 200].filter(Boolean))];
+  const lab = g => g === f.def && f.unit ? `${f.unit} (${g} g)` : g === f.last ? `Last: ${g} g` : `${g} g`;
+  return `<div class="scrim"><div class="sheet"><h2>${esc(f.name)}</h2><div class="s">${f.per.kcal} kcal · ${fmt(f.per.p)} g protein · ${fmt(f.per.f)} g fat per 100 g</div>
+    <div class="chips">${ops.map(g => `<button class="chip ${sh.g === g ? 'on' : ''}" data-act="portion:${g}">${lab(g)}</button>`).join('')}</div>
+    <button class="primary" data-act="logsheet">Log ${sh.g} g · ${round(nutrients(sh.key, sh.g).kcal)} kcal</button>
+    <div style="display:flex;justify-content:space-between;margin-top:10px">
+      <button class="link" data-act="closesheet">Cancel</button>
+      ${sh.scan ? `<button class="link" data-act="difflabel">Package looks different?</button>` : ''}
+    </div></div></div>`;
+}
+function toastHTML() {
+  if (!S.toast) return '';
+  const clearFab = S.device === 'phone' && S.variant === 'C' && S.screen === 'home';
+  return `<div class="toast" ${clearFab ? 'style="right:84px"' : ''}><span>Logged ${esc(S.toast)}</span><button data-act="undo">Undo</button></div>`;
+}
+
+// ---- phone: homes
+function phoneHome() {
+  if (S.variant === 'A') return `${barsHTML()}<div class="grow" id="results">${resultsHTML()}<div class="lbl">Today</div>${logRows()}</div>
+    <div class="cmd"><button class="iconbtn" data-act="screen:camera" aria-label="Scan">📷</button>${commandInput('Food, or calories like 450')}</div>${fakeKbd()}`;
+  if (S.variant === 'B') return `<div class="cam" style="flex:1;min-height:0"><div class="camhint"><b>Point at a barcode</b></div><div class="reticle">barcode</div><div class="overlay-bars">${barsHTML()}</div></div>
+    <div class="chipsrow">${PREDICTED.map(k => `<button class="foodchip" data-act="tap:${k}"><div class="t">${esc(FOODS[k].name)}</div><div class="s">${FOODS[k].meal ? round(nutrients(k).kcal) + ' kcal meal' : subline(k)}</div></button>`).join('')}</div>
+    <div class="actionrow"><button data-act="screen:search">Search</button><button data-act="screen:numbers">Calories</button><button data-act="screen:day">Today</button></div>`;
+  return `${ringsHTML()}<div class="grow"><div class="lbl">Likely now</div>${PREDICTED.map(k => foodRow(k)).join('')}<div class="lbl">Today</div>${logRows()}<div style="height:80px"></div></div>
+    ${S.fab ? `<div class="fabmenu"><button data-act="screen:camera">Scan</button><button data-act="screen:search">Search</button><button data-act="screen:numbers">Calories</button></div>` : ''}
+    <button class="fab" data-act="fab">${S.fab ? '×' : '+'}</button>`;
+}
+function phoneHTML() {
+  const body = {
+    home: phoneHome, camera: cameraScreen, labelcam: labelCamScreen, search: searchScreen, numbers: numbersScreen, confirm: confirmScreen,
+    day: () => `<div class="top">Today<button class="x" data-act="home">Back</button></div>${barsHTML()}<div class="grow">${logRows()}</div>`,
+  }[S.screen]();
+  return body + sheetHTML() + toastHTML();
+}
+
+// ---- watch
+function watchHTML() {
+  if (S.screen === 'numbers') return `<div class="w-title">Calories</div><div class="w-num" id="wnum">${S.crown}<small>kcal · turn the Crown</small></div>
+    <input type="range" id="crown" min="10" max="1500" step="10" value="${S.crown}"><button class="w-log" data-act="logcrown">Log</button>${toastHTML()}`;
+  const list = PREDICTED.slice(0, 4).map(k => `<button class="w-row" data-act="wlog:${k}">${esc(FOODS[k].name)}<span class="s">${FOODS[k].meal ? round(nutrients(k).kcal) + ' kcal meal' : subline(k)}</span></button>`).join('');
+  const t = totals();
+  if (S.variant === 'A') return `<div class="grow"><div class="w-title">${round(t.kcal)} / ${TARGETS.kcal} kcal</div><div class="w-num" id="wnum">${S.crown}<small>turn the Crown</small></div>
+    <input type="range" id="crown" min="10" max="1500" step="10" value="${S.crown}"><button class="w-log" data-act="logcrown">Log kcal</button>${list}</div>${toastHTML()}`;
+  if (S.variant === 'B') return `<div class="grow"><div class="w-title">${round(t.kcal)} / ${TARGETS.kcal} kcal</div><div class="w-grid">
+    ${PREDICTED.slice(0, 3).map(k => `<button class="w-tile" data-act="wlog:${k}">${esc(FOODS[k].name)}<small>${FOODS[k].meal ? round(nutrients(k).kcal) + ' kcal' : subline(k)}</small></button>`).join('')}
+    <button class="w-tile" data-act="screen:numbers" style="background:#0f9a63">Calories<small style="color:#dff">Crown</small></button></div></div>${toastHTML()}`;
+  return `<div class="grow"><div class="w-title">${round(t.kcal)} / ${TARGETS.kcal} kcal</div>${list}<button class="w-row" data-act="screen:numbers" style="background:#0f9a63">Calories</button></div>${toastHTML()}`;
+}
+
+// ---- web
+function webHTML() {
+  const chrome = `<div class="webchrome">intake.example · Food log · Mac and browser, no scanning</div>`;
+  let body;
+  if (S.variant === 'A') {
+    body = `${barsHTML()}<div class="palette">${commandInput('Food, or calories like 450', '')}<div id="results">${resultsHTML()}</div></div>
+      <div style="padding:6px;text-align:center;font-size:12px;color:var(--mute)">Press <kbd>return</kbd> to log the top result</div>
+      <div class="grow"><div class="lbl">Today</div>${logRows()}</div>`;
+  } else if (S.variant === 'B') {
+    const tiles = PREDICTED.map(k => `<button class="tile" data-act="tap:${k}"><div class="t">${esc(FOODS[k].name)}</div><div class="s">${FOODS[k].meal ? round(nutrients(k).kcal) + ' kcal meal' : subline(k)}</div></button>`).join('');
+    body = `${barsHTML()}<div class="pad" style="padding-top:0">${commandInput('No camera here: search, or type calories')}</div>
+      <div class="grow"><div id="results">${S.q.trim() ? resultsHTML() : `<div class="tiles">${tiles}</div>`}</div><div class="lbl">Today</div>${logRows()}</div>`;
+  } else {
+    body = `<div class="w2"><div><div class="pad">${commandInput('Search, or type calories')}</div><div id="results">${S.q.trim() ? resultsHTML() : PREDICTED.map(k => foodRow(k)).join('')}</div></div>
+      <div>${ringsHTML()}<div class="lbl">Today</div>${logRows()}</div></div>`;
+  }
+  return chrome + body + sheetHTML() + toastHTML();
+}
+
+// ---- side panel
+const cameraLive = () => S.device === 'phone' && !S.sheet && (S.screen === 'camera' || (S.variant === 'B' && S.screen === 'home'));
+const scenariosHere = () => SCENARIOS.filter(s => s.dev.includes(S.device));
+function panelHTML() {
+  const v = VARIANTS[S.variant];
+  const here = scenariosHere();
+  const res = S.results[S.device] || {};
+  const score = r => r ? r.taps + r.keys : Infinity;
+  const table = here.map(s => {
+    const best = Math.min(...Object.keys(VARIANTS).map(k => score((res[s.id] || {})[k])));
+    const cells = Object.keys(VARIANTS).map(k => {
+      const r = (res[s.id] || {})[k];
+      return `<td class="${r && score(r) === best ? 'best' : ''}">${r ? `${r.taps}t${r.keys ? ` ${r.keys}k` : ''}` : '-'}</td>`;
+    }).join('');
+    return `<tr><td>${s.t}</td>${cells}</tr>`;
+  }).join('');
+  let sim = '';
+  if (cameraLive()) sim = `<button class="sim" data-sim="known">Camera sees: Skyr naturel barcode (known)</button><button class="sim" data-sim="unknown">Camera sees: Granola noten barcode (unknown)</button>`;
+  if (S.screen === 'labelcam') sim = S.pendingConflict
+    ? `<button class="sim" data-sim="conflict">Camera reads: the new Skyr label</button>`
+    : `<button class="sim" data-sim="clean">Camera reads: clean label</button><button class="sim" data-sim="bad">Camera reads: label with fat misread as 180 g</button>`;
+  const cur = SCENARIOS.find(s => s.id === S.scenario);
+  const state = {variant: S.variant, device: S.device, screen: S.screen, sheet: S.sheet ? (S.sheet.key || S.sheet.type) : null, query: S.q, lastAction: S.lastAct,
+    logEntries: S.log.map(e => `${e.time} ${e.name}${e.g ? ' ' + e.g + ' g' : ''} ${round(e.kcal)} kcal${e.read ? ' [label: ' + e.read + ']' : ''}`)};
+  return `
+    <div class="card"><h3>${S.variant}: ${v.name}</h3><div class="bet">${(DEVICE_NOTES[S.device] || {})[S.variant] || v.bet}</div></div>
+    <div class="card"><h3>Try a case, then watch the count</h3>
+      ${here.map(s => `<button class="scen ${s.id === S.scenario ? 'on' : ''}" data-scen="${s.id}">${s.t}${s.id === S.scenario ? `<small>${s.d}</small>` : ''}</button>`).join('')}
+      ${cur ? `<div class="meter"><span><b>${S.taps}</b> taps</span><span><b>${S.keys}</b> keys</span><span style="margin-left:auto;font-weight:600;color:${S.done ? 'var(--accent)' : 'var(--mute)'}">${S.done ? 'Logged ✓' : 'Counting…'}</span></div>` : ''}
+      ${sim}
+    </div>
+    <div class="card"><h3>Effort on ${DEVICES[S.device]} (t = taps, k = keys)</h3>
+      <table><tr><th></th>${Object.keys(VARIANTS).map(k => `<th>${k}</th>`).join('')}</tr>${table}</table>
+    </div>
+    <div class="card"><h3>State</h3><pre>${esc(JSON.stringify(state, null, 1))}</pre></div>`;
+}
+
+// ---- render
+function render() {
+  const d = document.getElementById('device');
+  d.className = S.device + (S.device === 'phone' && (S.screen === 'search' || S.screen === 'numbers' || (S.screen === 'home' && S.variant === 'A')) ? ' has-kbd' : '');
+  d.innerHTML = {phone: phoneHTML, watch: watchHTML, web: webHTML}[S.device]();
+  renderChrome();
+  const a = d.querySelector('[data-autofocus]');
+  if (a && !S.sheet) { a.focus(); a.setSelectionRange && a.setSelectionRange(a.value.length, a.value.length); }
+}
+function renderChrome() {
+  document.getElementById('panel').innerHTML = panelHTML();
+  document.getElementById('devices').innerHTML = Object.entries(DEVICES).map(([k, v]) => `<button class="${k === S.device ? 'on' : ''}" data-device="${k}">${v}</button>`).join('');
+  document.getElementById('switch').innerHTML = `<button data-cycle="-1" aria-label="Previous variant">←</button><span>${S.variant} (${VARIANTS[S.variant].name})</span><button data-cycle="1" aria-label="Next variant">→</button>`;
+}
+function syncURL() {
+  try { history.replaceState(null, '', `?variant=${S.variant}&device=${S.device}`); } catch (e) { /* file:// may refuse this */ }
+}
+function resetAttempt() {
+  Object.assign(S, {screen: 'home', sheet: null, fab: false, q: '', toast: null, conf: null, pendingConflict: false, labelBanner: false, nums: {kcal: '', p: '', f: ''}, crown: 300, taps: 0, keys: 0, done: false, log: seedLog()});
+}
+function goHome() { Object.assign(S, {screen: 'home', sheet: null, fab: false, q: '', conf: null, pendingConflict: false, labelBanner: false}); }
+
+// ---- logging
+let toastTimer;
+function addEntry(e) {
+  S.log.push({time: '08:15', ...e});
+  goHome();
+  S.nums = {kcal: '', p: '', f: ''};
+  S.toast = e.name + (e.g ? ` ${e.g} g` : '') + ` · ${round(e.kcal)} kcal`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { S.toast = null; render(); }, 6000);
+  const sc = SCENARIOS.find(s => s.id === S.scenario);
+  if (sc && !S.done && sc.hit(S.log[S.log.length - 1])) {
+    S.done = true;
+    const res = S.results[S.device] = S.results[S.device] || {};
+    (res[sc.id] = res[sc.id] || {})[S.variant] = {taps: S.taps, keys: S.keys};
+  }
+}
+function logFood(key, g) {
+  const f = FOODS[key];
+  addEntry({key, name: f.name, g: f.meal ? null : g, ...nutrients(key, g)});
+}
+function logQuick(kcal, p, f) {
+  if (!kcal) return;
+  addEntry({key: 'quick', name: 'Quick add', g: null, kcal, p, f, c: 0});
+}
+function openConfirm(mode) {
+  if (mode === 'conflict') {
+    S.conf = {mode, g: 150, portions: [150, 100, 200], name: 'Skyr naturel', rows: CONFLICT_ROWS.map(([k, lab, db, label]) => ({k, lab, db, label, use: 'label'}))};
+  } else {
+    S.conf = {mode, g: 45, portions: [45, 30, 100], name: 'Granola noten', rows: LABEL_ROWS.map(r => ({k: r[0], lab: r[1], val: r[0] === 'f' && mode === 'bad' ? 180 : r[3]}))};
+  }
+  S.screen = 'confirm';
+}
+function saveConfirm() {
+  const C = S.conf, m = C.g / 100;
+  const val = k => { const r = C.rows.find(x => x.k === k); return C.mode === 'conflict' ? r[r.use] : n(r.val); };
+  addEntry({key: C.mode === 'conflict' ? 'skyr' : 'granola', name: C.name || 'Unnamed food', g: C.g, read: C.mode, kcal: val('kcal') * m, p: val('p') * m, f: val('f') * m, c: val('c') * m});
+}
+
+// ---- actions inside the device; each one counts as a tap
+function act(raw) {
+  const [a, x, y, z] = raw.split(':');
+  S.lastAct = raw;
+  if (a !== 'undo') S.toast = null;
+  switch (a) {
+    case 'tap': { const f = FOODS[x]; if (f.meal) logFood(x, 0); else if (f.last) logFood(x, f.last); else S.sheet = {type: 'portion', key: x, g: f.def}; break; }
+    case 'wlog': { const f = FOODS[x]; logFood(x, f.last || 0); break; }
+    case 'logg': logFood(x, +y); break;
+    case 'quick': logQuick(+x, +y, +z); break;
+    case 'lognums': logQuick(n(S.nums.kcal), n(S.nums.p), n(S.nums.f)); break;
+    case 'logcrown': logQuick(S.crown, 0, 0); break;
+    case 'portion': S.sheet.g = +x; break;
+    case 'logsheet': logFood(S.sheet.key, S.sheet.g); break;
+    case 'closesheet': S.sheet = null; break;
+    case 'screen': S.screen = x; S.sheet = null; S.fab = false; S.q = ''; break;
+    case 'home': goHome(); break;
+    case 'fab': S.fab = !S.fab; break;
+    case 'startlabel': S.sheet = null; S.screen = 'labelcam'; break;
+    case 'difflabel': S.sheet = null; S.pendingConflict = true; S.screen = 'labelcam'; break;
+    case 'confg': S.conf.g = +x; break;
+    case 'pick': S.conf.rows.find(r => r.k === x).use = y; break;
+    case 'fix': S.conf.rows.find(r => r.k === x).val = +y; break;
+    case 'saveconf': saveConfirm(); break;
+    case 'undo': S.log.pop(); S.toast = null; break;
+  }
+  render();
+}
+function simulate(what) {
+  S.lastAct = 'camera:' + what;
+  if (what === 'known') S.sheet = {type: 'portion', key: 'skyr', g: 150, scan: true};
+  if (what === 'unknown') {
+    if (S.variant === 'B') { S.screen = 'labelcam'; S.labelBanner = true; } else S.sheet = {type: 'unknown'};
+  }
+  if (what === 'clean' || what === 'bad' || what === 'conflict') openConfirm(what);
+  render();
+}
+
+// ---- events
+document.addEventListener('click', e => {
+  const inDevice = e.target.closest('#device');
+  if (inDevice) {
+    const b = e.target.closest('[data-act]');
+    const input = e.target.closest('input');
+    const live = S.scenario && !S.done;
+    if (b && !b.disabled) { if (live) S.taps++; act(b.dataset.act); return; }
+    if (input && input.id !== 'q' && !input.dataset.autofocus) { if (live) { S.taps++; renderChrome(); } }
+    return;
+  }
+  const sim = e.target.closest('[data-sim]');
+  if (sim) return simulate(sim.dataset.sim);
+  const scen = e.target.closest('[data-scen]');
+  if (scen) { S.scenario = scen.dataset.scen; resetAttempt(); render(); return; }
+  const dev = e.target.closest('[data-device]');
+  if (dev) {
+    S.device = dev.dataset.device;
+    if (!scenariosHere().some(s => s.id === S.scenario)) S.scenario = null;
+    resetAttempt(); syncURL(); render(); return;
+  }
+  const cyc = e.target.closest('[data-cycle]');
+  if (cyc) cycle(+cyc.dataset.cycle);
+});
+function cycle(dir) {
+  const ks = Object.keys(VARIANTS);
+  S.variant = ks[(ks.indexOf(S.variant) + dir + ks.length) % ks.length];
+  resetAttempt(); syncURL(); render();
+}
+document.addEventListener('keydown', e => {
+  const typing = e.target.matches('input:not([type=range]),textarea,[contenteditable]');
+  if (!typing && !e.metaKey && !e.ctrlKey) {
+    if (e.key === 'ArrowLeft') cycle(-1);
+    if (e.key === 'ArrowRight') cycle(1);
+  }
+  if (!e.target.closest('#device') || !e.target.matches('input')) return;
+  if (S.scenario && !S.done && (e.key.length === 1 || e.key === 'Enter' || e.key === 'Backspace')) { S.keys++; renderChrome(); }
+  if (e.key !== 'Enter') return;
+  const mode = e.target.dataset.enter;
+  S.toast = null;
+  if (mode === 'nums') { logQuick(n(S.nums.kcal), n(S.nums.p), n(S.nums.f)); render(); }
+  if (mode === 'q') {
+    if (!S.q.trim()) return;
+    const r = parseQ(S.q);
+    S.lastAct = 'enter:' + S.q;
+    if (r.quick) logQuick(r.quick.kcal, r.quick.p, r.quick.f);
+    else if (r.keys.length) {
+      const k = r.keys[0], f = FOODS[k];
+      if (f.meal) logFood(k, 0);
+      else if (r.g) logFood(k, r.g);
+      else if (f.last) logFood(k, f.last);
+      else S.sheet = {type: 'portion', key: k, g: f.def};
+    }
+    render();
+  }
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'q') {
+    S.q = t.value;
+    const r = document.getElementById('results');
+    if (r) {
+      if (S.device === 'phone' && S.variant === 'A' && S.screen === 'home') r.innerHTML = resultsHTML() + `<div class="lbl">Today</div>${logRows()}`;
+      else if (S.device === 'web' && !S.q.trim()) { render(); return; }
+      else r.innerHTML = resultsHTML();
+    }
+  }
+  if (t.dataset.num) S.nums[t.dataset.num] = t.value;
+  if (t.id === 'crown') { S.crown = +t.value; document.getElementById('wnum').firstChild.nodeValue = S.crown; }
+  if (t.dataset.confname !== undefined) S.conf.name = t.value;
+  if (t.dataset.conf) S.conf.rows.find(r => r.k === t.dataset.conf).val = t.value;
+});
+document.addEventListener('change', e => { if (e.target.dataset.conf) render(); });
+
+render();
+</script>
+</body>
+</html>
